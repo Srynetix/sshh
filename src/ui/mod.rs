@@ -96,6 +96,7 @@ impl App {
             terminal.draw(|f| self.ui(&mut state, f))?;
 
             if state.should_quit {
+                self.shutdown(&mut terminal)?;
                 break;
             }
 
