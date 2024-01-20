@@ -11,7 +11,7 @@ repository = "https://github.com/Srynetix/sshh"
 clap = { version = "4.4.6", features = ["derive"] }
 crossterm = "0.27.0"
 home = "0.5.5"
-itertools = "0.11.0"
+itertools = "0.12.0"
 ratatui = "0.23.0"
 syn = { version = "2.0.38", features = ["full"] }
 thiserror = "1.0.49"
