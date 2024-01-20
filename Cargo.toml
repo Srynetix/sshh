@@ -8,13 +8,13 @@ repository = "https://github.com/Srynetix/sshh"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.4.6", features = ["derive"] }
+clap = { version = "4.4.18", features = ["derive"] }
 crossterm = "0.27.0"
-home = "0.5.5"
-itertools = "0.11.0"
-ratatui = "0.23.0"
-syn = { version = "2.0.38", features = ["full"] }
-thiserror = "1.0.49"
+home = "0.5.9"
+itertools = "0.12.0"
+ratatui = "0.25.0"
+syn = { version = "2.0.48", features = ["full"] }
+thiserror = "1.0.56"
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

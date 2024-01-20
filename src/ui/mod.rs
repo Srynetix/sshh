@@ -16,8 +16,7 @@ use crate::config::{parser::SshConfigParser, SshHost};
 use stateful_list::StatefulList;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stderr>>;
-type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stderr>>;
+type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
 
 #[derive(Default)]
 pub struct AppState {
@@ -85,7 +84,7 @@ impl App {
     }
 
     pub fn run(&self, mut state: AppState) -> Result<()> {
-        let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stderr()))?;
+        let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
         self.startup(&mut terminal)?;
 
         state.hosts.select_first();
