@@ -14,7 +14,7 @@ home = "0.5.9"
 itertools = "0.12.1"
 ratatui = "0.25.0"
 syn = { version = "2.0.48", features = ["full"] }
-thiserror = "1.0.56"
+thiserror = "1.0.58"
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
