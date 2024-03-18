@@ -8,7 +8,7 @@ repository = "https://github.com/Srynetix/sshh"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.4.18", features = ["derive"] }
+clap = { version = "4.5.3", features = ["derive"] }
 crossterm = "0.27.0"
 home = "0.5.9"
 itertools = "0.12.1"
