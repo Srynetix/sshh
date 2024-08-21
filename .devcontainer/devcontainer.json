@@ -4,14 +4,6 @@
 	"name": "Rust",
 	"dockerFile": "Dockerfile",
 
-	"mounts": [
-	 	{
-	 		"source": "devcontainer-cargo-cache-${devcontainerId}",
-	 		"target": "/usr/local/cargo",
-	 		"type": "volume"
-	 	}
-	],
-
 	"features": {
 		"ghcr.io/guiyomh/features/just": {} 
 	}
