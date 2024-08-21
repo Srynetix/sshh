@@ -5,7 +5,7 @@ use std::{path::PathBuf, process::Command, time::Duration};
 use crossterm::event::{
     self,
     Event::Key,
-    KeyCode::{Char, Down, Enter, Up},
+    KeyCode::{Backspace, Char, Down, Enter, Esc, Up},
 };
 use ratatui::{
     prelude::*,
@@ -20,11 +20,14 @@ type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
 
 #[derive(Default)]
 pub struct AppState {
-    hosts: StatefulList<SshHost>,
+    all_hosts: Vec<SshHost>,
+    filtered_hosts: StatefulList<SshHost>,
     host_file: PathBuf,
     should_quit: bool,
     should_connect: bool,
     should_edit: bool,
+    search_mode: bool,
+    search_query: String,
 }
 
 impl AppState {
@@ -39,7 +42,7 @@ impl AppState {
     }
 
     pub fn connect(&mut self) -> Result<()> {
-        if let Some(host) = self.hosts.current() {
+        if let Some(host) = self.filtered_hosts.current() {
             println!("Trying to connect to {}...", host.hostname);
             let _output = Command::new("ssh").args(host.get_command_line()).status()?;
             Ok(())
@@ -64,8 +67,28 @@ impl AppState {
     pub fn reload_hosts(&mut self) -> Result<()> {
         let parser = SshConfigParser::new();
         let config = parser.parse_from_path(self.host_file.clone())?;
-        self.hosts.set_data(config.to_hosts());
+        self.all_hosts = config.to_hosts();
+        self.update_filtered_hosts();
         Ok(())
+    }
+
+    pub fn update_filtered_hosts(&mut self) {
+        let filtered = self
+            .all_hosts
+            .iter()
+            .filter(|h| h.alias.contains(&self.search_query))
+            .cloned()
+            .collect::<Vec<_>>();
+        self.filtered_hosts.set_data(filtered);
+        self.filtered_hosts.select_first();
+    }
+
+    pub fn longest_ip_length(&self) -> usize {
+        self.filtered_hosts
+            .iter()
+            .map(|h| h.hostname.len())
+            .max()
+            .unwrap_or(0)
     }
 }
 
@@ -87,7 +110,7 @@ impl App {
         let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
         self.startup(&mut terminal)?;
 
-        state.hosts.select_first();
+        state.filtered_hosts.select_first();
 
         loop {
             self.update(&mut state)?;
@@ -109,7 +132,7 @@ impl App {
                 self.escape_raw_mode(&mut terminal, &mut state, |state| {
                     state.run_editor()?;
                     state.reload_hosts()?;
-                    state.hosts.select_first();
+                    state.filtered_hosts.select_first();
                     Ok(())
                 })?;
 
@@ -123,12 +146,7 @@ impl App {
     pub fn ui(&self, state: &mut AppState, f: &mut Frame<'_>) {
         let arrow_size = 2;
         let padding = 2;
-        let longest_ip_length = state
-            .hosts
-            .iter()
-            .map(|h| h.hostname.len())
-            .max()
-            .unwrap_or(0);
+        let longest_ip_length = state.longest_ip_length();
 
         let top_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -136,11 +154,12 @@ impl App {
                 [
                     Constraint::Length(1),
                     Constraint::Min(0),
-                    Constraint::Length(3),
+                    Constraint::Length(1),
+                    Constraint::Length(4),
                 ]
                 .as_ref(),
             )
-            .split(f.size());
+            .split(f.area());
 
         let middle_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -159,7 +178,7 @@ impl App {
 
         // Write host aliases in left section
         let items: Vec<_> = state
-            .hosts
+            .filtered_hosts
             .iter()
             .map(|host| {
                 ListItem::new(vec![Line::from(vec![
@@ -173,7 +192,7 @@ impl App {
             .collect();
 
         // Title
-        let title = Paragraph::new("sshh...")
+        let title = Paragraph::new(format!("sshh {}", env!("CARGO_PKG_VERSION")))
             .style(Style::default().fg(Color::Gray))
             .alignment(Alignment::Center);
         f.render_widget(title, top_chunks[0]);
@@ -182,24 +201,59 @@ impl App {
             .block(Block::default().borders(Borders::ALL).title("Aliases"))
             .highlight_style(Style::default().add_modifier(Modifier::BOLD))
             .highlight_symbol("> ");
-        f.render_stateful_widget(list, middle_chunks[1], state.hosts.state_mut());
+        f.render_stateful_widget(list, middle_chunks[1], state.filtered_hosts.state_mut());
+
+        // Search
+        if !state.search_query.is_empty() || state.search_mode {
+            let search =
+                Paragraph::new(format!("/{}", state.search_query)).alignment(Alignment::Center);
+            f.render_widget(search, top_chunks[2]);
+        }
 
         // Help
-        let help_text = Paragraph::new("Q to quit\nE to edit file\nENTER to connect")
+        let help_text = Paragraph::new("Arrow up/down to select    ENTER to connect\nQ to quit    E to edit file (using EDITOR var)\n/ to search    ESC to cancel search")
             .style(Style::default().fg(Color::Gray))
             .alignment(Alignment::Center);
-        f.render_widget(help_text, top_chunks[2])
+        f.render_widget(help_text, top_chunks[3])
     }
 
     pub fn update(&self, state: &mut AppState) -> Result<()> {
         if event::poll(Duration::from_millis(250))? {
             if let Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Press {
+                    if state.search_mode {
+                        match key.code {
+                            Esc => {
+                                state.search_mode = false;
+                                state.search_query.clear();
+                                state.update_filtered_hosts();
+                            }
+                            Char(c) => {
+                                state.search_query.push(c);
+                                state.update_filtered_hosts();
+                            }
+                            Backspace => {
+                                if !state.search_query.is_empty() {
+                                    state.search_query.pop();
+                                } else {
+                                    state.search_mode = false;
+                                }
+                                state.update_filtered_hosts();
+                            }
+                            _ => (),
+                        }
+                    } else {
+                        match key.code {
+                            Char('q') => state.should_quit = true,
+                            Char('e') => state.should_edit = true,
+                            Char('/') => state.search_mode = true,
+                            _ => (),
+                        }
+                    }
+
                     match key.code {
-                        Char('q') => state.should_quit = true,
-                        Char('e') => state.should_edit = true,
-                        Up => state.hosts.select_previous(),
-                        Down => state.hosts.select_next(),
+                        Up => state.filtered_hosts.select_previous(),
+                        Down => state.filtered_hosts.select_next(),
                         Enter => state.should_connect = true,
                         _ => (),
                     }
