@@ -1,6 +1,6 @@
 mod stateful_list;
 
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{path::PathBuf, process::Command, sync::mpsc::channel, time::Duration};
 
 use crossterm::event::{
     self,
@@ -76,7 +76,11 @@ impl AppState {
         let filtered = self
             .all_hosts
             .iter()
-            .filter(|h| h.alias.contains(&self.search_query))
+            .filter(|h| {
+                h.alias
+                    .to_lowercase()
+                    .contains(&self.search_query.to_lowercase())
+            })
             .cloned()
             .collect::<Vec<_>>();
         self.filtered_hosts.set_data(filtered);
@@ -89,6 +93,12 @@ impl AppState {
             .map(|h| h.hostname.len())
             .max()
             .unwrap_or(0)
+    }
+
+    pub fn reset_search(&mut self) {
+        self.search_mode = false;
+        self.search_query.clear();
+        self.update_filtered_hosts();
     }
 }
 
@@ -112,6 +122,10 @@ impl App {
 
         state.filtered_hosts.select_first();
 
+        let (tx, rx) = channel();
+        ctrlc::set_handler(move || tx.send(()).expect("Could not send signal"))
+            .expect("Error setting SIGINT handler");
+
         loop {
             self.update(&mut state)?;
 
@@ -124,7 +138,7 @@ impl App {
 
             if state.should_connect {
                 self.escape_raw_mode(&mut terminal, &mut state, |state| state.connect())?;
-
+                state.reset_search();
                 state.should_connect = false;
             }
 
@@ -135,8 +149,13 @@ impl App {
                     state.filtered_hosts.select_first();
                     Ok(())
                 })?;
-
+                state.reset_search();
                 state.should_edit = false;
+            }
+
+            if rx.try_recv().is_ok() {
+                // CTRL+C received, try again!
+                continue;
             }
         }
 
@@ -211,7 +230,13 @@ impl App {
         }
 
         // Help
-        let help_text = Paragraph::new("Arrow up/down to select    ENTER to connect\nQ to quit    E to edit file (using EDITOR var)\n/ to search    ESC to cancel search")
+        let help_text_content = if state.search_mode {
+            "Arrow up/down to select    ENTER to connect\nType characters to search    ESC to cancel search"
+        } else {
+            "Arrow up/down to select    ENTER to connect\nQ to quit    E to edit file (using EDITOR var)\n/ to search"
+        };
+
+        let help_text = Paragraph::new(help_text_content)
             .style(Style::default().fg(Color::Gray))
             .alignment(Alignment::Center);
         f.render_widget(help_text, top_chunks[3])
@@ -224,9 +249,7 @@ impl App {
                     if state.search_mode {
                         match key.code {
                             Esc => {
-                                state.search_mode = false;
-                                state.search_query.clear();
-                                state.update_filtered_hosts();
+                                state.reset_search();
                             }
                             Char(c) => {
                                 state.search_query.push(c);
@@ -254,7 +277,11 @@ impl App {
                     match key.code {
                         Up => state.filtered_hosts.select_previous(),
                         Down => state.filtered_hosts.select_next(),
-                        Enter => state.should_connect = true,
+                        Enter => {
+                            if state.filtered_hosts.current().is_some() {
+                                state.should_connect = true;
+                            }
+                        }
                         _ => (),
                     }
                 }
