@@ -49,5 +49,11 @@ Escape
 Type ":wq"
 Enter
 
+# Search
+Sleep 2s
+Type "/my-ssh"
+Sleep 2s
+Escape
+
 # See
 Sleep 3s
